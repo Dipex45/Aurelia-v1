@@ -1,0 +1,36 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Context
+        uses: actions/setup-node@v4
+        with:
+          node-node: '20'
+          cache: 'npm'
+
+      - name: Install Project Dependencies
+        run: npm ci
+
+      - name: Check Formatting (Prettier)
+        run: npx prettier --check "src/**/*.{ts,tsx,json,md,css}"
+
+      - name: Run ESLint Analyzer
+        run: npx eslint "src/**/*.{ts,tsx}" --max-warnings 15
+
+      - name: TypeScript Compile Target
+        run: npm run lint
+
+      - name: Build Standalone Dist
+        run: npm run build

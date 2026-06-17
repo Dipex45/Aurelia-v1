@@ -1,0 +1,25 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "aurelia",
+    "drizzle",
+    "jwt",
+    "jti",
+    "zod",
+    "npm",
+    "tsc",
+    "vitest",
+    "playwright",
+    "recharts",
+    "lucide",
+    "stylelint",
+    "husky",
+    "commitlint"
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "package-lock.json"
+  ]
+}

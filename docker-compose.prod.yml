@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  postgres-prod:
+    image: postgres:16-alpine
+    container_name: aurelia-postgres-prod
+    restart: unless-stopped
+    shm_size: "1gb"
+    environment:
+      POSTGRES_DB: aurelia_ops_prod
+      POSTGRES_USER: aurelia_secure_operator
+      POSTGRES_PASSWORD: ${DATABASE_SECURE_PASSWORD:-hardened_master_secret_2026}
+    volumes:
+      - prod_postgres_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aurelia_secure_operator -d aurelia_ops_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4GB
+    networks:
+      - prod-isolated-net
+
+  redis-prod:
+    image: redis:7-alpine
+    container_name: aurelia-redis-prod
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - prod_redis_volume:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1GB
+    networks:
+      - prod-isolated-net
+
+  web-prod:
+    image: aurelia-ops:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aurelia-web-prod
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://aurelia_secure_operator:${DATABASE_SECURE_PASSWORD}@postgres-prod:5432/aurelia_ops_prod
+      - REDIS_URL=redis://redis-prod:6379
+      - PORT=3000
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - SESSION_SECRET=${SESSION_CRYPTO_SECRET}
+      - SENTRY_DSN=${SENTRY_DSN}
+    depends_on:
+      postgres-prod:
+        condition: service_healthy
+      redis-prod:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2GB
+    networks:
+      - prod-isolated-net
+      - ingress-public-net
+
+  reverse-proxy:
+    image: nginx:1.25-alpine
+    container_name: aurelia-nginx-proxy
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - web-prod
+    networks:
+      - ingress-public-net
+
+volumes:
+  prod_postgres_volume:
+  prod_redis_volume:
+
+networks:
+  prod-isolated-net:
+    internal: true
+  ingress-public-net:
+    driver: bridge

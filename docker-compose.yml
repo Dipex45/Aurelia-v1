@@ -1,0 +1,73 @@
+version: "3.8"
+
+services:
+  # 1. Primary Postgres DB Engine
+  postgres:
+    image: postgres:16-alpine
+    container_name: aurelia-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: aurelia_ops
+      POSTGRES_USER: aurelia_admin
+      POSTGRES_PASSWORD: superhigh_entropy_password_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aurelia_admin -d aurelia_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aurelia-net
+
+  # 2. Redis Stack for Job Queue & PubSub Events
+  redis:
+    image: redis:7-alpine
+    container_name: aurelia-redis
+    restart: always
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aurelia-net
+
+  # 3. Main Web Entrypoint (Nginx routed reverse proxy)
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aurelia-web-app
+    restart: always
+    environment:
+      - DATABASE_URL=postgres://aurelia_admin:superhigh_entropy_password_2026@postgres:5432/aurelia_ops
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      - NODE_ENV=development
+      - SESSION_SECRET=7f5b729ac25211ea13bc1537dc2828b8
+      - LOG_LEVEL=debug
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aurelia-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  aurelia-net:
+    driver: bridge

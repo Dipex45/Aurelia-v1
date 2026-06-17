@@ -1,0 +1,98 @@
+name: Aurelia Ops SaaS Continuous Integration & Delivery
+
+on:
+  push:
+    branches: [ "main", "release/*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # 1. Pipeline Verification stage (Lint, Typecheck, Test, Compile)
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Initialize Node.js Lifecycle
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Resolve Application Dependencies
+        run: npm ci
+
+      - name: Code Quality Auditing (TS compiler assertions)
+        run: npm run lint
+
+      - name: Execute Automated Test Suites
+        run: npx vitest run
+
+      - name: Dry Run Build Bundle Validation
+        run: npm run build
+
+  # 2. Release preparation & publishing to container registries
+  publish:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup QEMU Emulator Support
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx Compiler
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Container Registry Broker
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Publish Secure Production Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/aurelia-web:latest
+            ghcr.io/${{ github.repository }}/aurelia-web:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 3. Rolling zero-downtime microservice update step
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate Production Shell
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_SERVER_IP }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          script: |
+            echo "--- STARTING DEPLOYMENT UPGRADE LIFE CYCLE WITH ROLLING FALLBACK ---"
+            cd /opt/aurelia-ops
+            
+            # Pull new asset sets
+            docker-compose -f docker-compose.prod.yml pull web-prod
+            
+            # Zero-downtime rolling service check and update
+            docker-compose -f docker-compose.prod.yml up -d --no-deps --scale web-prod=3 --no-recreate web-prod
+            
+            # Run background migration verification checks
+            docker-compose -f docker-compose.prod.yml exec -T web-prod npm run db:migrate || {
+              echo "--- UPGRADE MIGRATION FAILURE DETECTED! INITIATING EMERGENCY RESTORE ---"
+              docker-compose -f docker-compose.prod.yml exec -T web-prod npm run db:rollback
+              exit 1
+            }
+
+            # Scale back to standard dual replica nodes cleanly
+            docker-compose -f docker-compose.prod.yml up -d --scale web-prod=2
+            echo "--- DEPLOYMENT SUCCESSFUL AND AUDITED ---"

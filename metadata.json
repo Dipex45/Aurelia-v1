@@ -1,0 +1,10 @@
+{
+  "name": "AURELIA OPS",
+  "description": "A multi-tenant, RBAC-secured, audit-complete customer support system for high-scale operations.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

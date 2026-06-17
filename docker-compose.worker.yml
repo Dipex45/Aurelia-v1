@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  # BullMQ isolated job worker instances (Scales independently of web processes)
+  ticket-worker-instance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aurelia-worker-agent
+    restart: always
+    environment:
+      - DATABASE_URL=postgres://aurelia_admin:superhigh_entropy_password_2026@postgres:5432/aurelia_ops
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    command: ["node", "dist/server.cjs"] # Executed bundled JS containing integrated consumers
+    networks:
+      - aurelia-net
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1GB
+
+networks:
+  aurelia-net:
+    external: true
