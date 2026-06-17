@@ -534,9 +534,9 @@ export function TicketListPage() {
                 >
                   <option value="">-- UNCHANGED --</option>
                   <option value="unassigned">UNASSIGNED</option>
-                  {members?.map((m: any) => (
-                    <option key={m.id} value={m.userId || m.id}>
-                      {m.fullName || m.email}
+                  {members?.items?.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.full_name || m.fullName || m.email}
                     </option>
                   ))}
                 </select>

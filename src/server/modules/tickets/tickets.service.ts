@@ -25,29 +25,43 @@ export async function autoTriageTicket(workspaceId: string, ticketId: string) {
 
   try {
     const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: `Analyze the following support request and determine its triage parameters:
+    let response: any = null;
+    let attempts = 3;
+    let delayMs = 305;
+
+    for (let i = 1; i <= attempts; i++) {
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: `Analyze the following support request and determine its triage parameters:
 Title: ${ticket.title}
 Description: ${ticket.description}`,
-      config: {
-        systemInstruction: "You are an automated helpdesk AI triage processor. Your job is to analyze incoming tickets to categorize them, assess sentiment, generate useful tags, and assign a priority level. Categorize into ONE of: 'billing', 'technical', 'security', 'feature_request', 'general'. Analyze User sentiment as ONE of: 'positive', 'neutral', 'negative', 'frustrated'. Provide 2 to 5 short lowercase descriptive tags.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            category: { type: Type.STRING },
-            sentiment: { type: Type.STRING },
-            tags: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            priority: { type: Type.STRING }
-          },
-          required: ["category", "sentiment", "tags", "priority"]
-        }
+          config: {
+            systemInstruction: "You are an automated helpdesk AI triage processor. Your job is to analyze incoming tickets to categorize them, assess sentiment, generate useful tags, and assign a priority level. Categorize into ONE of: 'billing', 'technical', 'security', 'feature_request', 'general'. Analyze User sentiment as ONE of: 'positive', 'neutral', 'negative', 'frustrated'. Provide 2 to 5 short lowercase descriptive tags.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                category: { type: Type.STRING },
+                sentiment: { type: Type.STRING },
+                tags: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                priority: { type: Type.STRING }
+              },
+              required: ["category", "sentiment", "tags", "priority"]
+            }
+          }
+        });
+        break; // Success, exit loop
+      } catch (err: any) {
+        console.warn(`[AI-Triage] Attempt ${i}/${attempts} failed to contact Gemini API. Error: ${err.message || err}`);
+        if (i === attempts) throw err; // rethrow on last attempt to trigger local fallback heuristics
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        delayMs *= 2.5; // Exponential escalation
       }
-    });
+    }
 
     if (response?.text) {
       const parsed = JSON.parse(response.text.trim());
